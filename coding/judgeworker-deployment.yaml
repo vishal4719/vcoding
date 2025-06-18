@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: judge-worker
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: judge-worker
+  template:
+    metadata:
+      labels:
+        app: judge-worker
+    spec:
+      containers:
+      - name: judge-worker
+        image: coding-worker:latest
+        imagePullPolicy: Never
+        env:
+        - name: WORKER_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: SPRING_PROFILES_ACTIVE
+          value: "judgeworker,worker"
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m" 

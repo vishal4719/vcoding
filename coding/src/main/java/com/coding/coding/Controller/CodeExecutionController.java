@@ -18,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.core.AmqpTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,8 +27,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.GetMapping;
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -38,6 +43,7 @@ import com.coding.coding.DTO.CodeExecutionRequest;
 import com.coding.coding.DTO.CodeExecutionResponse;
 import com.coding.coding.Services.CodeExecutionService;
 import com.coding.coding.Services.QuestionService;
+import com.coding.coding.Utils.NetworkConfigUtil;
 
 @RestController
 @RequestMapping("/api")
@@ -46,7 +52,8 @@ public class CodeExecutionController {
 
     private static final Logger logger = LoggerFactory.getLogger(CodeExecutionController.class);
 
-    private final String JUDGE0_BASE_URL = "http://192.168.0.103:2358";
+    @Value("${judge0.api.url:http://localhost:2358}")
+    private String judge0BaseUrl;
 
     private final OkHttpClient client = new OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -75,6 +82,23 @@ public class CodeExecutionController {
 
     @Autowired
     private QuestionService questionService;
+
+    @Autowired
+    private NetworkConfigUtil networkConfigUtil;
+
+    /**
+     * Get the current network IP address for Judge0
+     */
+    private String getJudge0Url() {
+        return networkConfigUtil.getJudge0Url();
+    }
+
+    /**
+     * Detect the local network IP address
+     */
+    private String getLocalNetworkIp() {
+        return networkConfigUtil.getLocalNetworkIp();
+    }
 
     @PostMapping("/code/run")
     public ResponseEntity<?> runCode(@RequestBody Map<String, Object> request) {
@@ -255,6 +279,20 @@ public class CodeExecutionController {
         }
     }
 
+    @GetMapping("/network/info")
+    public ResponseEntity<?> getNetworkInfo() {
+        try {
+            Map<String, String> networkInfo = networkConfigUtil.getNetworkInfo();
+            networkInfo.put("environment", networkConfigUtil.getNetworkEnvironment());
+            networkInfo.put("judge0Accessible", String.valueOf(networkConfigUtil.isJudge0Accessible()));
+            
+            return ResponseEntity.ok(networkInfo);
+        } catch (Exception e) {
+            logger.error("Error getting network info: {}", e.getMessage());
+            return ResponseEntity.status(500).body(Map.of("error", "Failed to get network information"));
+        }
+    }
+
     private String sanitizeInput(String input) {
         if (input == null) return "";
         // Normalize newlines and trim leading/trailing whitespace
@@ -287,7 +325,7 @@ public class CodeExecutionController {
         okhttp3.RequestBody body = okhttp3.RequestBody.create(json, mediaType);
 
         Request request = new Request.Builder()
-                .url(JUDGE0_BASE_URL + "/submissions?base64_encoded=false&wait=false")
+                .url(getJudge0Url() + "/submissions?base64_encoded=false&wait=false")
                 .post(body)
                 .addHeader("content-type", "application/json")
                 .build();
@@ -306,7 +344,7 @@ public class CodeExecutionController {
 
     private Map<String, Object> getExecutionResult(String token) throws IOException, InterruptedException {
         Request request = new Request.Builder()
-                .url(JUDGE0_BASE_URL + "/submissions/" + token + "?base64_encoded=false&fields=*")
+                .url(getJudge0Url() + "/submissions/" + token + "?base64_encoded=false&fields=*")
                 .get()
                 .build();
 
